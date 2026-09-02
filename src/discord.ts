@@ -505,6 +505,7 @@ export class DiscordService {
 							.setTimestamp(),
 					],
 				}).catch(() => {});
+				await thread.setArchived(true).catch(() => {});
 			}
 		} catch (err) {
 			console.error("[Discord] Erreur lors de la mise à jour du message:", err);
@@ -566,6 +567,7 @@ export class DiscordService {
 				await pending.thread.send({
 					content: `❌ **Question annulée** par <@${interaction.user.id}>.`,
 				}).catch(() => {});
+				await pending.thread.setArchived(true).catch(() => {});
 			}
 
 			pending.resolve({
@@ -599,6 +601,7 @@ export class DiscordService {
 				await pending.thread.send({
 					content: `🔄 **Interruption demandée** par <@${interaction.user.id}> pour forker/réessayer la session.`,
 				}).catch(() => {});
+				await pending.thread.setArchived(true).catch(() => {});
 			}
 
 			pending.resolve({
@@ -685,6 +688,7 @@ export class DiscordService {
 				await pending.thread.send({
 					content: `✅ **Sélection validée** par <@${interaction.user.id}> :\n${summaryList}`,
 				}).catch(() => {});
+				await pending.thread.setArchived(true).catch(() => {});
 			}
 
 			pending.resolve({
@@ -742,6 +746,7 @@ export class DiscordService {
 				await pending.thread.send({
 					content: `✅ **Choix validé** par <@${interaction.user.id}> : \`${index + 1}. ${opt.label}\``,
 				}).catch(() => {});
+				await pending.thread.setArchived(true).catch(() => {});
 			}
 
 			pending.resolve({
@@ -801,6 +806,7 @@ export class DiscordService {
 					await pending.thread.send({
 						content: `💬 **Réponse saisie** par <@${interaction.user.id}> :\n\`\`\`\n${text}\n\`\`\``,
 					}).catch(() => {});
+					await pending.thread.setArchived(true).catch(() => {});
 				}
 
 				pending.resolve({
