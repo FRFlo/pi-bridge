@@ -75,10 +75,6 @@ function truncate(str: string | undefined, maxLen: number): string {
 	return `${trimmed.slice(0, Math.max(0, maxLen - 3))}...`;
 }
 
-function getUserLabel(user: { displayName?: string; username: string }): string {
-	return user.displayName || user.username;
-}
-
 export class DiscordService {
 	private client: Client;
 	private config: Config;
@@ -554,8 +550,7 @@ export class DiscordService {
 			if (pending.reminderMessage) pending.reminderMessage.delete().catch(() => {});
 			this.pendingQuestions.delete(questionId);
 
-			const userLabel = getUserLabel(interaction.user);
-			const statusText = `Question annulée par ${userLabel}.`;
+			const statusText = `Question annulée par <@${interaction.user.id}>.`;
 			await interaction.update({
 				embeds: [
 					new EmbedBuilder()
@@ -569,8 +564,7 @@ export class DiscordService {
 
 			if (pending.thread) {
 				await pending.thread.send({
-					content: `❌ **Question annulée** par **${userLabel}**.`,
-					allowedMentions: { parse: [] },
+					content: `❌ **Question annulée** par <@${interaction.user.id}>.`,
 				}).catch(() => {});
 			}
 
@@ -589,8 +583,7 @@ export class DiscordService {
 			if (pending.reminderMessage) pending.reminderMessage.delete().catch(() => {});
 			this.pendingQuestions.delete(questionId);
 
-			const userLabel = getUserLabel(interaction.user);
-			const statusText = `Interruption demandée par ${userLabel} pour forker/réessayer la session.`;
+			const statusText = `Interruption demandée par <@${interaction.user.id}> pour forker/réessayer la session.`;
 			await interaction.update({
 				embeds: [
 					new EmbedBuilder()
@@ -604,8 +597,7 @@ export class DiscordService {
 
 			if (pending.thread) {
 				await pending.thread.send({
-					content: `🔄 **Interruption demandée** par **${userLabel}** pour forker/réessayer la session.`,
-					allowedMentions: { parse: [] },
+					content: `🔄 **Interruption demandée** par <@${interaction.user.id}> pour forker/réessayer la session.`,
 				}).catch(() => {});
 			}
 
@@ -677,8 +669,7 @@ export class DiscordService {
 				.map((a) => (a.type === "option" ? `✓ \`${a.index}. ${a.label}\`` : `✓ \`Autre: ${a.label}\``))
 				.join("\n");
 
-			const userLabel = getUserLabel(interaction.user);
-			const statusText = `**Options sélectionnées :**\n${summaryList}\n\n*Validé par ${userLabel}*`;
+			const statusText = `**Options sélectionnées :**\n${summaryList}\n\n*Validé par <@${interaction.user.id}>*`;
 			await interaction.update({
 				embeds: [
 					new EmbedBuilder()
@@ -692,8 +683,7 @@ export class DiscordService {
 
 			if (pending.thread) {
 				await pending.thread.send({
-					content: `✅ **Sélection validée** par **${userLabel}** :\n${summaryList}`,
-					allowedMentions: { parse: [] },
+					content: `✅ **Sélection validée** par <@${interaction.user.id}> :\n${summaryList}`,
 				}).catch(() => {});
 			}
 
@@ -736,8 +726,7 @@ export class DiscordService {
 			if (pending.reminderMessage) pending.reminderMessage.delete().catch(() => {});
 			this.pendingQuestions.delete(questionId);
 
-			const userLabel = getUserLabel(interaction.user);
-			const statusText = `**Option choisie :**\n✓ \`${index + 1}. ${opt.label}\`\n\n*Validé par ${userLabel}*`;
+			const statusText = `**Option choisie :**\n✓ \`${index + 1}. ${opt.label}\`\n\n*Validé par <@${interaction.user.id}>*`;
 			await interaction.update({
 				embeds: [
 					new EmbedBuilder()
@@ -751,8 +740,7 @@ export class DiscordService {
 
 			if (pending.thread) {
 				await pending.thread.send({
-					content: `✅ **Choix validé** par **${userLabel}** : \`${index + 1}. ${opt.label}\``,
-					allowedMentions: { parse: [] },
+					content: `✅ **Choix validé** par <@${interaction.user.id}> : \`${index + 1}. ${opt.label}\``,
 				}).catch(() => {});
 			}
 
@@ -799,8 +787,7 @@ export class DiscordService {
 				if (pending.reminderMessage) pending.reminderMessage.delete().catch(() => {});
 				this.pendingQuestions.delete(questionId);
 
-				const userLabel = getUserLabel(interaction.user);
-				const statusText = `**Réponse :**\n\`${text}\`\n\n*Soumis par ${userLabel}*`;
+				const statusText = `**Réponse :**\n\`${text}\`\n\n*Soumis par <@${interaction.user.id}>*`;
 				await interaction.deferUpdate().catch(() => {});
 				await this.updateMessageStatus(
 					pending.message,
@@ -812,8 +799,7 @@ export class DiscordService {
 
 				if (pending.thread) {
 					await pending.thread.send({
-						content: `💬 **Réponse saisie** par **${userLabel}** :\n\`\`\`\n${text}\n\`\`\``,
-						allowedMentions: { parse: [] },
+						content: `💬 **Réponse saisie** par <@${interaction.user.id}> :\n\`\`\`\n${text}\n\`\`\``,
 					}).catch(() => {});
 				}
 
