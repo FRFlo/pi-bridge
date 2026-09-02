@@ -18,8 +18,7 @@ Direct bidirectional Discord relay & interactive decision bridge for the **Pi Co
 | `PORT` | HTTP server port | `8017` |
 | `PI_BRIDGE_API_KEY` | Bearer token for authenticating Pi requests | `""` |
 | `PI_BRIDGE_DISCORD_TOKEN` | Discord Bot Token | `""` |
-| `DISCORD_HOME_CHANNEL` | Default Discord Channel ID | `1544807364585201864` |
-| `DISCORD_DEFAULT_THREAD_ID` | Default Discord Thread ID (`Pi - PC`) | `1544807364585201864` |
+| `DISCORD_HOME_CHANNEL` | Default Discord Channel ID | `1544810657549910117` |
 | `DISCORD_ALLOWED_USERS` | Comma-separated allowed Discord User IDs | `544862774002581504` |
 
 ## API Endpoints

@@ -3,7 +3,6 @@ export interface Config {
 	apiKey: string;
 	discordToken: string;
 	defaultChannelId: string;
-	defaultThreadId: string;
 	allowedUsers: string[];
 }
 
@@ -11,8 +10,7 @@ export function loadConfig(): Config {
 	const port = Number.parseInt(process.env.PORT || "8017", 10);
 	const apiKey = process.env.PI_BRIDGE_API_KEY || "";
 	const discordToken = process.env.PI_BRIDGE_DISCORD_TOKEN || process.env.DISCORD_BOT_TOKEN || "";
-	const defaultChannelId = process.env.DISCORD_HOME_CHANNEL || "1544807364585201864";
-	const defaultThreadId = process.env.DISCORD_DEFAULT_THREAD_ID || "1544807364585201864";
+	const defaultChannelId = process.env.DISCORD_HOME_CHANNEL || "1544810657549910117";
 	const rawAllowed = process.env.DISCORD_ALLOWED_USERS || "544862774002581504";
 	const allowedUsers = rawAllowed
 		.split(",")
@@ -24,7 +22,6 @@ export function loadConfig(): Config {
 		apiKey,
 		discordToken,
 		defaultChannelId,
-		defaultThreadId,
 		allowedUsers,
 	};
 }

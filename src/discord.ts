@@ -17,6 +17,7 @@ import {
 	TextInputBuilder,
 	TextInputStyle,
 	type ThreadChannel,
+	ThreadAutoArchiveDuration,
 } from "discord.js";
 import type { Config } from "./config";
 
@@ -35,7 +36,6 @@ export interface QuestionRequest {
 	multiSelect?: boolean;
 	timeoutSeconds?: number;
 	channelId?: string;
-	threadId?: string;
 }
 
 export interface AnswerItem {
@@ -59,6 +59,7 @@ interface PendingQuestion {
 	id: string;
 	req: QuestionRequest;
 	message: Message;
+	thread?: ThreadChannel;
 	selectedOptionValues: Set<string>;
 	customText?: string;
 	timer: Timer | null;
@@ -106,20 +107,20 @@ export class DiscordService {
 		return this.config.allowedUsers.includes(userId);
 	}
 
-	private async resolveTargetChannel(
-		channelId?: string,
-		threadId?: string,
-	): Promise<TextChannel | ThreadChannel | null> {
-		const targetId = threadId || channelId || this.config.defaultThreadId || this.config.defaultChannelId;
+	private async resolveTargetChannel(channelId?: string): Promise<TextChannel | null> {
+		const targetId = channelId || this.config.defaultChannelId;
 		if (!targetId) return null;
 
 		try {
 			const channel = await this.client.channels.fetch(targetId);
+			if (channel && channel.isTextBased() && !channel.isThread()) {
+				return channel as TextChannel;
+			}
 			if (channel && channel.isTextBased()) {
-				return channel as TextChannel | ThreadChannel;
+				return channel as any;
 			}
 		} catch (err) {
-			console.error(`[Discord] Impossible de récupérer le salon/fil ${targetId}:`, err);
+			console.error(`[Discord] Impossible de récupérer le salon ${targetId}:`, err);
 		}
 		return null;
 	}
@@ -128,11 +129,10 @@ export class DiscordService {
 		message: string;
 		title?: string;
 		channelId?: string;
-		threadId?: string;
 	}): Promise<{ success: boolean; messageId?: string; error?: string }> {
-		const channel = await this.resolveTargetChannel(params.channelId, params.threadId);
+		const channel = await this.resolveTargetChannel(params.channelId);
 		if (!channel) {
-			return { success: false, error: "Salon ou fil Discord introuvable" };
+			return { success: false, error: "Salon Discord introuvable" };
 		}
 
 		try {
@@ -155,12 +155,12 @@ export class DiscordService {
 	}
 
 	public async askQuestion(req: QuestionRequest): Promise<QuestionResult> {
-		const channel = await this.resolveTargetChannel(req.channelId, req.threadId);
+		const channel = await this.resolveTargetChannel(req.channelId);
 		if (!channel) {
 			return {
 				status: "cancelled",
 				answers: [],
-				message: "Salon ou fil Discord introuvable",
+				message: "Salon Discord introuvable",
 			};
 		}
 
@@ -168,13 +168,35 @@ export class DiscordService {
 		const timeoutSec = req.timeoutSeconds || 300;
 		const expireTimestamp = Math.floor(Date.now() / 1000) + timeoutSec;
 
-		const embed = this.buildQuestionEmbed(req, expireTimestamp);
+		const mainEmbed = this.buildMainQuestionEmbed(req, expireTimestamp);
 		const components = this.buildQuestionComponents(questionId, req);
 
+		// 1. Envoyer le message principal dans le channel
 		const sentMessage = await channel.send({
-			embeds: [embed],
+			embeds: [mainEmbed],
 			components,
 		});
+
+		// 2. Créer un thread attaché au message principal pour y stocker le contexte
+		let thread: ThreadChannel | undefined;
+		try {
+			const threadName = `❓ ${req.question.replace(/[\n\r]+/g, " ").slice(0, 95)}`;
+			thread = await sentMessage.startThread({
+				name: threadName,
+				autoArchiveDuration: ThreadAutoArchiveDuration.OneHour,
+			});
+
+			const contextEmbeds = this.buildContextEmbeds(req);
+			if (contextEmbeds.length > 0) {
+				await thread.send({ embeds: contextEmbeds });
+			} else {
+				await thread.send({
+					content: "ℹ️ *Aucun contexte supplémentaire fourni pour cette question.*",
+				});
+			}
+		} catch (err) {
+			console.warn("[Discord] Impossible de créer le fil de contexte attaché:", err);
+		}
 
 		return new Promise<QuestionResult>((resolve) => {
 			const timer = setTimeout(async () => {
@@ -187,6 +209,7 @@ export class DiscordService {
 					req,
 					"⌛ **Question expirée (délai dépassé)**",
 					0xed4245,
+					thread,
 				);
 
 				resolve({
@@ -200,6 +223,7 @@ export class DiscordService {
 				id: questionId,
 				req,
 				message: sentMessage,
+				thread,
 				selectedOptionValues: new Set<string>(),
 				timer,
 				resolve,
@@ -217,7 +241,7 @@ export class DiscordService {
 		if (pending.timer) clearTimeout(pending.timer);
 		this.pendingQuestions.delete(questionId);
 
-		await this.updateMessageStatus(pending.message, pending.req, statusMessage, 0x57f287);
+		await this.updateMessageStatus(pending.message, pending.req, statusMessage, 0x57f287, pending.thread);
 		pending.resolve({
 			status: "answered",
 			answers: [],
@@ -226,33 +250,12 @@ export class DiscordService {
 		return true;
 	}
 
-	private buildQuestionEmbed(req: QuestionRequest, expireTimestamp: number): EmbedBuilder {
+	private buildMainQuestionEmbed(req: QuestionRequest, expireTimestamp: number): EmbedBuilder {
 		const embed = new EmbedBuilder()
 			.setColor(0x5865f2)
 			.setTitle("❓ Question de Pi Agent")
-			.setDescription(`### ${req.question}\n\n⏳ *Expire <t:${expireTimestamp}:R>*`)
+			.setDescription(`### ${req.question}\n\n⏳ *Expire <t:${expireTimestamp}:R>*\n🧵 *Consultez le fil attaché pour le contexte détaillé.*`)
 			.setTimestamp();
-
-		if (req.context) {
-			embed.addFields({
-				name: "📋 Contexte",
-				value: req.context.length > 1024 ? `${req.context.slice(0, 1020)}...` : req.context,
-			});
-		}
-
-		if (req.recentMessages && req.recentMessages.length > 0) {
-			const formattedRecent = req.recentMessages
-				.slice(-3)
-				.map((m) => `**${m.role === "user" ? "👤 Flo" : "🤖 Pi"}**: ${m.content.length > 250 ? `${m.content.slice(0, 247)}...` : m.content}`)
-				.join("\n\n");
-
-			if (formattedRecent.trim()) {
-				embed.addFields({
-					name: "💬 Derniers échanges",
-					value: formattedRecent.length > 1024 ? `${formattedRecent.slice(0, 1020)}...` : formattedRecent,
-				});
-			}
-		}
 
 		if (req.details) {
 			embed.addFields({
@@ -262,6 +265,35 @@ export class DiscordService {
 		}
 
 		return embed;
+	}
+
+	private buildContextEmbeds(req: QuestionRequest): EmbedBuilder[] {
+		const embeds: EmbedBuilder[] = [];
+
+		if (req.context) {
+			const contextEmbed = new EmbedBuilder()
+				.setColor(0x5865f2)
+				.setTitle("📋 Contexte de la tâche")
+				.setDescription(req.context.length > 4000 ? `${req.context.slice(0, 3990)}...` : req.context);
+			embeds.push(contextEmbed);
+		}
+
+		if (req.recentMessages && req.recentMessages.length > 0) {
+			const formattedRecent = req.recentMessages
+				.slice(-4)
+				.map((m) => `**${m.role === "user" ? "👤 Flo" : "🤖 Pi"}**:\n${m.content.length > 800 ? `${m.content.slice(0, 797)}...` : m.content}`)
+				.join("\n\n---\n\n");
+
+			if (formattedRecent.trim()) {
+				const historyEmbed = new EmbedBuilder()
+					.setColor(0x4f545c)
+					.setTitle("💬 Historique récent des échanges")
+					.setDescription(formattedRecent.length > 4000 ? `${formattedRecent.slice(0, 3990)}...` : formattedRecent);
+				embeds.push(historyEmbed);
+			}
+		}
+
+		return embeds;
 	}
 
 	private buildQuestionComponents(
@@ -296,7 +328,7 @@ export class DiscordService {
 						.setCustomId(`submit_multi:${questionId}`)
 						.setLabel("Valider la sélection")
 						.setStyle(ButtonStyle.Success)
-						.setEmoji("🚀"),
+						.setEmoji("✅"),
 					new ButtonBuilder()
 						.setCustomId(`other:${questionId}`)
 						.setLabel("Autre (texte)")
@@ -414,6 +446,7 @@ export class DiscordService {
 		req: QuestionRequest,
 		statusText: string,
 		color = 0x57f287,
+		thread?: ThreadChannel,
 	): Promise<void> {
 		try {
 			const embed = new EmbedBuilder()
@@ -428,8 +461,20 @@ export class DiscordService {
 
 			await message.edit({
 				embeds: [embed],
-				components: [], // Disables all buttons/menus
+				components: [], // Désactive tous les boutons / sélecteurs
 			});
+
+			if (thread) {
+				await thread.send({
+					embeds: [
+						new EmbedBuilder()
+							.setColor(color)
+							.setTitle("Statut de la question")
+							.setDescription(statusText)
+							.setTimestamp(),
+					],
+				}).catch(() => {});
+			}
 		} catch (err) {
 			console.error("[Discord] Erreur lors de la mise à jour du message:", err);
 		}
@@ -472,16 +517,23 @@ export class DiscordService {
 			if (pending.timer) clearTimeout(pending.timer);
 			this.pendingQuestions.delete(questionId);
 
+			const statusText = `Annulée sur Discord par <@${interaction.user.id}>.`;
 			await interaction.update({
 				embeds: [
 					new EmbedBuilder()
 						.setColor(0xed4245)
 						.setTitle("❌ Question annulée")
-						.setDescription(`### ${pending.req.question}\n\nAnnulée sur Discord par <@${interaction.user.id}>.`)
+						.setDescription(`### ${pending.req.question}\n\n${statusText}`)
 						.setTimestamp(),
 				],
 				components: [],
 			});
+
+			if (pending.thread) {
+				await pending.thread.send({
+					content: `❌ **Question annulée** par <@${interaction.user.id}>.`,
+				}).catch(() => {});
+			}
 
 			pending.resolve({
 				status: "cancelled",
@@ -496,16 +548,23 @@ export class DiscordService {
 			if (pending.timer) clearTimeout(pending.timer);
 			this.pendingQuestions.delete(questionId);
 
+			const statusText = `Interruption demandée par <@${interaction.user.id}> pour forker/réessayer la session.`;
 			await interaction.update({
 				embeds: [
 					new EmbedBuilder()
 						.setColor(0xfee75c)
 						.setTitle("🔄 Réessayer / Fork demandé")
-						.setDescription(`### ${pending.req.question}\n\nInterruption demandée par <@${interaction.user.id}> pour forker/réessayer la session.`)
+						.setDescription(`### ${pending.req.question}\n\n${statusText}`)
 						.setTimestamp(),
 				],
 				components: [],
 			});
+
+			if (pending.thread) {
+				await pending.thread.send({
+					content: `🔄 **Interruption demandée** par <@${interaction.user.id}> pour forker/réessayer la session.`,
+				}).catch(() => {});
+			}
 
 			pending.resolve({
 				status: "retry",
@@ -541,16 +600,23 @@ export class DiscordService {
 			if (pending.timer) clearTimeout(pending.timer);
 			this.pendingQuestions.delete(questionId);
 
+			const statusText = `**Option choisie :**\n✓ \`${index + 1}. ${opt.label}\`\n\n*Validé par <@${interaction.user.id}>*`;
 			await interaction.update({
 				embeds: [
 					new EmbedBuilder()
 						.setColor(0x57f287)
 						.setTitle("✅ Choix validé")
-						.setDescription(`### ${pending.req.question}\n\n**Option choisie :**\n✓ \`${index + 1}. ${opt.label}\`\n\n*Validé par <@${interaction.user.id}>*`)
+						.setDescription(`### ${pending.req.question}\n\n${statusText}`)
 						.setTimestamp(),
 				],
 				components: [],
 			});
+
+			if (pending.thread) {
+				await pending.thread.send({
+					content: `✅ **Choix validé** par <@${interaction.user.id}> : \`${index + 1}. ${opt.label}\``,
+				}).catch(() => {});
+			}
 
 			pending.resolve({
 				status: "answered",
@@ -607,16 +673,23 @@ export class DiscordService {
 				.map((a) => (a.type === "option" ? `✓ \`${a.index}. ${a.label}\`` : `✓ \`Autre: ${a.label}\``))
 				.join("\n");
 
+			const statusText = `**Options sélectionnées :**\n${summaryList}\n\n*Validé par <@${interaction.user.id}>*`;
 			await interaction.update({
 				embeds: [
 					new EmbedBuilder()
 						.setColor(0x57f287)
 						.setTitle("✅ Sélection validée")
-						.setDescription(`### ${pending.req.question}\n\n**Options sélectionnées :**\n${summaryList}\n\n*Validé par <@${interaction.user.id}>*`)
+						.setDescription(`### ${pending.req.question}\n\n${statusText}`)
 						.setTimestamp(),
 				],
 				components: [],
 			});
+
+			if (pending.thread) {
+				await pending.thread.send({
+					content: `✅ **Sélection validée** par <@${interaction.user.id}> :\n${summaryList}`,
+				}).catch(() => {});
+			}
 
 			pending.resolve({
 				status: "answered",
@@ -655,16 +728,23 @@ export class DiscordService {
 			if (pending.timer) clearTimeout(pending.timer);
 			this.pendingQuestions.delete(questionId);
 
+			const statusText = `**Option choisie :**\n✓ \`${index + 1}. ${opt.label}\`\n\n*Validé par <@${interaction.user.id}>*`;
 			await interaction.update({
 				embeds: [
 					new EmbedBuilder()
 						.setColor(0x57f287)
 						.setTitle("✅ Choix validé")
-						.setDescription(`### ${pending.req.question}\n\n**Option choisie :**\n✓ \`${index + 1}. ${opt.label}\`\n\n*Validé par <@${interaction.user.id}>*`)
+						.setDescription(`### ${pending.req.question}\n\n${statusText}`)
 						.setTimestamp(),
 				],
 				components: [],
 			});
+
+			if (pending.thread) {
+				await pending.thread.send({
+					content: `✅ **Choix validé** par <@${interaction.user.id}> : \`${index + 1}. ${opt.label}\``,
+				}).catch(() => {});
+			}
 
 			pending.resolve({
 				status: "answered",
@@ -707,13 +787,21 @@ export class DiscordService {
 				if (pending.timer) clearTimeout(pending.timer);
 				this.pendingQuestions.delete(questionId);
 
+				const statusText = `**Réponse :**\n\`${text}\`\n\n*Soumis par <@${interaction.user.id}>*`;
 				await interaction.deferUpdate().catch(() => {});
 				await this.updateMessageStatus(
 					pending.message,
 					pending.req,
-					`**Réponse :**\n\`${text}\`\n\n*Soumis par <@${interaction.user.id}>*`,
+					statusText,
 					0x57f287,
+					pending.thread,
 				);
+
+				if (pending.thread) {
+					await pending.thread.send({
+						content: `💬 **Réponse saisie** par <@${interaction.user.id}> :\n\`\`\`\n${text}\n\`\`\``,
+					}).catch(() => {});
+				}
 
 				pending.resolve({
 					status: "answered",
