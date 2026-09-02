@@ -4,6 +4,7 @@ export interface Config {
 	discordToken: string;
 	defaultChannelId: string;
 	allowedUsers: string[];
+	reminderDelaySeconds: number;
 }
 
 export function loadConfig(): Config {
@@ -16,6 +17,7 @@ export function loadConfig(): Config {
 		.split(",")
 		.map((u) => u.trim())
 		.filter((u) => u.length > 0);
+	const reminderDelaySeconds = Number.parseInt(process.env.DISCORD_REMINDER_DELAY_SECONDS || "60", 10);
 
 	return {
 		port,
@@ -23,5 +25,6 @@ export function loadConfig(): Config {
 		discordToken,
 		defaultChannelId,
 		allowedUsers,
+		reminderDelaySeconds,
 	};
 }

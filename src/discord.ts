@@ -60,9 +60,11 @@ interface PendingQuestion {
 	req: QuestionRequest;
 	message: Message;
 	thread?: ThreadChannel;
+	reminderMessage?: Message;
 	selectedOptionIndices: Set<number>;
 	customText?: string;
 	timer: Timer | null;
+	reminderTimer: Timer | null;
 	resolve: (result: QuestionResult) => void;
 }
 
@@ -210,9 +212,38 @@ export class DiscordService {
 		}
 
 		return new Promise<QuestionResult>((resolve) => {
+			const reminderSec = this.config.reminderDelaySeconds || 60;
+			let reminderTimer: Timer | null = null;
+
+			if (reminderSec > 0 && this.config.allowedUsers.length > 0) {
+				reminderTimer = setTimeout(async () => {
+					const p = this.pendingQuestions.get(questionId);
+					if (!p) return;
+
+					const pings = this.config.allowedUsers.map((uid) => `<@${uid}>`).join(" ");
+					try {
+						const reminderMsg = await sentMessage.reply({
+							content: `⏰ ${pings} **Rappel :** Cette question de Pi Agent attend votre réponse !`,
+							allowedMentions: { users: this.config.allowedUsers },
+						});
+						p.reminderMessage = reminderMsg;
+
+						if (p.thread) {
+							await p.thread.send({
+								content: `⏰ ${pings} **Rappel :** Question en attente de réponse depuis ${reminderSec}s.`,
+								allowedMentions: { users: this.config.allowedUsers },
+							}).catch(() => {});
+						}
+					} catch (err) {
+						console.warn("[Discord] Impossible d'envoyer le rappel/ping:", err);
+					}
+				}, reminderSec * 1000);
+			}
+
 			const timer = setTimeout(async () => {
 				const pending = this.pendingQuestions.get(questionId);
 				if (!pending) return;
+				if (pending.reminderTimer) clearTimeout(pending.reminderTimer);
 				this.pendingQuestions.delete(questionId);
 
 				await this.updateMessageStatus(
@@ -237,6 +268,7 @@ export class DiscordService {
 				thread,
 				selectedOptionIndices: new Set<number>(),
 				timer,
+				reminderTimer,
 				resolve,
 			});
 		});
@@ -249,7 +281,9 @@ export class DiscordService {
 		const pending = this.pendingQuestions.get(questionId);
 		if (!pending) return false;
 
+		if (pending.reminderTimer) clearTimeout(pending.reminderTimer);
 		if (pending.timer) clearTimeout(pending.timer);
+		if (pending.reminderMessage) pending.reminderMessage.delete().catch(() => {});
 		this.pendingQuestions.delete(questionId);
 
 		await this.updateMessageStatus(pending.message, pending.req, statusMessage, 0x57f287, pending.thread);
@@ -506,7 +540,9 @@ export class DiscordService {
 		}
 
 		if (action === "cancel") {
+			if (pending.reminderTimer) clearTimeout(pending.reminderTimer);
 			if (pending.timer) clearTimeout(pending.timer);
+			if (pending.reminderMessage) pending.reminderMessage.delete().catch(() => {});
 			this.pendingQuestions.delete(questionId);
 
 			const userLabel = getUserLabel(interaction.user);
@@ -539,7 +575,9 @@ export class DiscordService {
 		}
 
 		if (action === "retry") {
+			if (pending.reminderTimer) clearTimeout(pending.reminderTimer);
 			if (pending.timer) clearTimeout(pending.timer);
+			if (pending.reminderMessage) pending.reminderMessage.delete().catch(() => {});
 			this.pendingQuestions.delete(questionId);
 
 			const userLabel = getUserLabel(interaction.user);
@@ -600,7 +638,9 @@ export class DiscordService {
 				return;
 			}
 
+			if (pending.reminderTimer) clearTimeout(pending.reminderTimer);
 			if (pending.timer) clearTimeout(pending.timer);
+			if (pending.reminderMessage) pending.reminderMessage.delete().catch(() => {});
 			this.pendingQuestions.delete(questionId);
 
 			const answers: AnswerItem[] = [];
@@ -682,7 +722,9 @@ export class DiscordService {
 			const opt = pending.req.options?.[index];
 			if (!opt) return;
 
+			if (pending.reminderTimer) clearTimeout(pending.reminderTimer);
 			if (pending.timer) clearTimeout(pending.timer);
+			if (pending.reminderMessage) pending.reminderMessage.delete().catch(() => {});
 			this.pendingQuestions.delete(questionId);
 
 			const userLabel = getUserLabel(interaction.user);
@@ -743,7 +785,9 @@ export class DiscordService {
 
 			// If single mode or free text, resolve immediately
 			if (!pending.req.multiSelect) {
+				if (pending.reminderTimer) clearTimeout(pending.reminderTimer);
 				if (pending.timer) clearTimeout(pending.timer);
+				if (pending.reminderMessage) pending.reminderMessage.delete().catch(() => {});
 				this.pendingQuestions.delete(questionId);
 
 				const userLabel = getUserLabel(interaction.user);
