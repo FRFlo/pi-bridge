@@ -28,6 +28,7 @@ export interface QuestionOption {
 }
 
 export interface QuestionRequest {
+	id?: string;
 	question: string;
 	details?: string;
 	context?: string;
@@ -223,7 +224,7 @@ export class DiscordService {
 		}
 	}
 
-	public async askQuestion(req: QuestionRequest): Promise<QuestionResult> {
+	public async askQuestion(req: QuestionRequest, abortSignal?: AbortSignal): Promise<QuestionResult> {
 		const channel = await this.resolveTargetChannel(req.channelId);
 		if (!channel) {
 			return {
@@ -233,7 +234,7 @@ export class DiscordService {
 			};
 		}
 
-		const questionId = randomUUID().slice(0, 8);
+		const questionId = req.id || randomUUID().slice(0, 8);
 		const timeoutSec = req.timeoutSeconds || 300;
 		const reminderSec = this.config.reminderDelaySeconds || 60;
 		const nowSec = Math.floor(Date.now() / 1000);
@@ -343,12 +344,23 @@ export class DiscordService {
 				reminderTimer,
 				resolve,
 			});
+
+			if (abortSignal) {
+				if (abortSignal.aborted) {
+					this.resolveQuestionExternally(questionId, "❌ Question annulée depuis le terminal", true);
+					return;
+				}
+				abortSignal.addEventListener("abort", () => {
+					this.resolveQuestionExternally(questionId, "❌ Question annulée depuis le terminal", true);
+				});
+			}
 		});
 	}
 
 	public async resolveQuestionExternally(
 		questionId: string,
 		statusMessage: string,
+		isCancelled = false,
 	): Promise<boolean> {
 		const pending = this.pendingQuestions.get(questionId);
 		if (!pending) return false;
@@ -358,9 +370,10 @@ export class DiscordService {
 		if (pending.reminderMessage) pending.reminderMessage.delete().catch(() => {});
 		this.pendingQuestions.delete(questionId);
 
-		await this.updateMessageStatus(pending.message, pending.req, statusMessage, 0x57f287, pending.thread);
+		const color = isCancelled ? 0xed4245 : 0x57f287;
+		await this.updateMessageStatus(pending.message, pending.req, statusMessage, color, pending.thread);
 		pending.resolve({
-			status: "answered",
+			status: isCancelled ? "cancelled" : "answered",
 			answers: [],
 			message: statusMessage,
 		});

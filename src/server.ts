@@ -23,6 +23,7 @@ const RecentMessageSchema = z.object({
 });
 
 const AskSchema = z.object({
+	id: z.string().optional(),
 	question: z.string().min(1),
 	details: z.string().optional(),
 	context: z.string().optional(),
@@ -36,6 +37,8 @@ const AskSchema = z.object({
 
 const ResolveSchema = z.object({
 	statusMessage: z.string().optional(),
+	status: z.string().optional(),
+	isCancelled: z.boolean().optional(),
 });
 
 export function createServer(config: Config, discordService: DiscordService) {
@@ -106,7 +109,7 @@ export function createServer(config: Config, discordService: DiscordService) {
 				})),
 			};
 
-			const result = await discordService.askQuestion(req);
+			const result = await discordService.askQuestion(req, c.req.raw.signal);
 			return c.json(result);
 		} catch (err: any) {
 			return c.json({ error: err.message || "Internal server error" }, 500);
@@ -119,11 +122,14 @@ export function createServer(config: Config, discordService: DiscordService) {
 			const id = c.req.param("id");
 			const body = await c.req.json().catch(() => ({}));
 			const parsed = ResolveSchema.safeParse(body);
+			const isCancelled = parsed.success && (parsed.data.status === "cancelled" || parsed.data.isCancelled === true);
 			const statusMsg = parsed.success && parsed.data.statusMessage
 				? parsed.data.statusMessage
+				: isCancelled
+				? "❌ Question annulée depuis le terminal local"
 				: "⚡ Répondu directement depuis le terminal local";
 
-			const resolved = await discordService.resolveQuestionExternally(id, statusMsg);
+			const resolved = await discordService.resolveQuestionExternally(id, statusMsg, isCancelled);
 			return c.json({ success: resolved });
 		} catch (err: any) {
 			return c.json({ error: err.message || "Internal server error" }, 500);
