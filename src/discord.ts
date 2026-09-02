@@ -505,7 +505,7 @@ export class DiscordService {
 			if (pending.timer) clearTimeout(pending.timer);
 			this.pendingQuestions.delete(questionId);
 
-			const statusText = `Annulée sur Discord par <@${interaction.user.id}>.`;
+			const statusText = "Question annulée sur Discord.";
 			await interaction.update({
 				embeds: [
 					new EmbedBuilder()
@@ -519,7 +519,7 @@ export class DiscordService {
 
 			if (pending.thread) {
 				await pending.thread.send({
-					content: `❌ **Question annulée** par <@${interaction.user.id}>.`,
+					content: "❌ **Question annulée**.",
 				}).catch(() => {});
 			}
 
@@ -536,7 +536,7 @@ export class DiscordService {
 			if (pending.timer) clearTimeout(pending.timer);
 			this.pendingQuestions.delete(questionId);
 
-			const statusText = `Interruption demandée par <@${interaction.user.id}> pour forker/réessayer la session.`;
+			const statusText = "Interruption demandée pour forker/réessayer la session.";
 			await interaction.update({
 				embeds: [
 					new EmbedBuilder()
@@ -550,7 +550,7 @@ export class DiscordService {
 
 			if (pending.thread) {
 				await pending.thread.send({
-					content: `🔄 **Interruption demandée** par <@${interaction.user.id}> pour forker/réessayer la session.`,
+					content: "🔄 **Interruption demandée** pour forker/réessayer la session.",
 				}).catch(() => {});
 			}
 
@@ -620,7 +620,7 @@ export class DiscordService {
 				.map((a) => (a.type === "option" ? `✓ \`${a.index}. ${a.label}\`` : `✓ \`Autre: ${a.label}\``))
 				.join("\n");
 
-			const statusText = `**Options sélectionnées :**\n${summaryList}\n\n*Validé par <@${interaction.user.id}>*`;
+			const statusText = `**Options sélectionnées :**\n${summaryList}`;
 			await interaction.update({
 				embeds: [
 					new EmbedBuilder()
@@ -634,7 +634,7 @@ export class DiscordService {
 
 			if (pending.thread) {
 				await pending.thread.send({
-					content: `✅ **Sélection validée** par <@${interaction.user.id}> :\n${summaryList}`,
+					content: `✅ **Sélection validée** :\n${summaryList}`,
 				}).catch(() => {});
 			}
 
@@ -675,7 +675,7 @@ export class DiscordService {
 			if (pending.timer) clearTimeout(pending.timer);
 			this.pendingQuestions.delete(questionId);
 
-			const statusText = `**Option choisie :**\n✓ \`${index + 1}. ${opt.label}\`\n\n*Validé par <@${interaction.user.id}>*`;
+			const statusText = `**Option choisie :**\n✓ \`${index + 1}. ${opt.label}\``;
 			await interaction.update({
 				embeds: [
 					new EmbedBuilder()
@@ -689,7 +689,7 @@ export class DiscordService {
 
 			if (pending.thread) {
 				await pending.thread.send({
-					content: `✅ **Choix validé** par <@${interaction.user.id}> : \`${index + 1}. ${opt.label}\``,
+					content: `✅ **Choix validé** : \`${index + 1}. ${opt.label}\``,
 				}).catch(() => {});
 			}
 
@@ -734,7 +734,7 @@ export class DiscordService {
 				if (pending.timer) clearTimeout(pending.timer);
 				this.pendingQuestions.delete(questionId);
 
-				const statusText = `**Réponse :**\n\`${text}\`\n\n*Soumis par <@${interaction.user.id}>*`;
+				const statusText = `**Réponse :**\n\`${text}\``;
 				await interaction.deferUpdate().catch(() => {});
 				await this.updateMessageStatus(
 					pending.message,
@@ -746,7 +746,7 @@ export class DiscordService {
 
 				if (pending.thread) {
 					await pending.thread.send({
-						content: `💬 **Réponse saisie** par <@${interaction.user.id}> :\n\`\`\`\n${text}\n\`\`\``,
+						content: `💬 **Réponse saisie** :\n\`\`\`\n${text}\n\`\`\``,
 					}).catch(() => {});
 				}
 
