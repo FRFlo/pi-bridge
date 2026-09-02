@@ -60,10 +60,17 @@ interface PendingQuestion {
 	req: QuestionRequest;
 	message: Message;
 	thread?: ThreadChannel;
-	selectedOptionValues: Set<string>;
+	selectedOptionIndices: Set<number>;
 	customText?: string;
 	timer: Timer | null;
 	resolve: (result: QuestionResult) => void;
+}
+
+function truncate(str: string | undefined, maxLen: number): string {
+	if (!str) return "";
+	const trimmed = str.trim();
+	if (trimmed.length <= maxLen) return trimmed;
+	return `${trimmed.slice(0, Math.max(0, maxLen - 3))}...`;
 }
 
 export class DiscordService {
@@ -141,10 +148,10 @@ export class DiscordService {
 				.setTimestamp();
 
 			if (params.title) {
-				embed.setTitle(params.title);
-				embed.setDescription(params.message);
+				embed.setTitle(truncate(params.title, 256));
+				embed.setDescription(truncate(params.message, 4096));
 			} else {
-				embed.setDescription(params.message);
+				embed.setDescription(truncate(params.message, 4096));
 			}
 
 			const sent = await channel.send({ embeds: [embed] });
@@ -180,7 +187,7 @@ export class DiscordService {
 		// 2. Créer un thread attaché au message principal pour y stocker le contexte
 		let thread: ThreadChannel | undefined;
 		try {
-			const threadName = `❓ ${req.question.replace(/[\n\r]+/g, " ").slice(0, 95)}`;
+			const threadName = `❓ ${truncate(req.question.replace(/[\n\r]+/g, " "), 95)}`;
 			thread = await sentMessage.startThread({
 				name: threadName,
 				autoArchiveDuration: ThreadAutoArchiveDuration.OneHour,
@@ -224,7 +231,7 @@ export class DiscordService {
 				req,
 				message: sentMessage,
 				thread,
-				selectedOptionValues: new Set<string>(),
+				selectedOptionIndices: new Set<number>(),
 				timer,
 				resolve,
 			});
@@ -254,13 +261,29 @@ export class DiscordService {
 		const embed = new EmbedBuilder()
 			.setColor(0x5865f2)
 			.setTitle("❓ Question de Pi Agent")
-			.setDescription(`### ${req.question}\n\n⏳ *Expire <t:${expireTimestamp}:R>*\n🧵 *Consultez le fil attaché pour le contexte détaillé.*`)
+			.setDescription(`### ${truncate(req.question, 1000)}\n\n⏳ *Expire <t:${expireTimestamp}:R>*\n🧵 *Consultez le fil attaché pour le contexte détaillé.*`)
 			.setTimestamp();
+
+		// Afficher la liste complète des options avec leurs descriptions complètes
+		if (req.options && req.options.length > 0) {
+			const optionsList = req.options.map((opt, idx) => {
+				let line = `**${idx + 1}. ${opt.label}**`;
+				if (opt.description) {
+					line += `\n↳ *${opt.description}*`;
+				}
+				return line;
+			}).join("\n\n");
+
+			embed.addFields({
+				name: "📋 Choix disponibles :",
+				value: truncate(optionsList, 1024),
+			});
+		}
 
 		if (req.details) {
 			embed.addFields({
 				name: "ℹ️ Détails & Instructions",
-				value: req.details.length > 1024 ? `${req.details.slice(0, 1020)}...` : req.details,
+				value: truncate(req.details, 1024),
 			});
 		}
 
@@ -274,21 +297,21 @@ export class DiscordService {
 			const contextEmbed = new EmbedBuilder()
 				.setColor(0x5865f2)
 				.setTitle("📋 Contexte de la tâche")
-				.setDescription(req.context.length > 4000 ? `${req.context.slice(0, 3990)}...` : req.context);
+				.setDescription(truncate(req.context, 4000));
 			embeds.push(contextEmbed);
 		}
 
 		if (req.recentMessages && req.recentMessages.length > 0) {
 			const formattedRecent = req.recentMessages
 				.slice(-4)
-				.map((m) => `**${m.role === "user" ? "👤 Flo" : "🤖 Pi"}**:\n${m.content.length > 800 ? `${m.content.slice(0, 797)}...` : m.content}`)
+				.map((m) => `**${m.role === "user" ? "👤 Flo" : "🤖 Pi"}**:\n${truncate(m.content, 800)}`)
 				.join("\n\n---\n\n");
 
 			if (formattedRecent.trim()) {
 				const historyEmbed = new EmbedBuilder()
 					.setColor(0x4f545c)
 					.setTitle("💬 Historique récent des échanges")
-					.setDescription(formattedRecent.length > 4000 ? `${formattedRecent.slice(0, 3990)}...` : formattedRecent);
+					.setDescription(truncate(formattedRecent, 4000));
 				embeds.push(historyEmbed);
 			}
 		}
@@ -301,28 +324,28 @@ export class DiscordService {
 		req: QuestionRequest,
 	): ActionRowBuilder<any>[] {
 		const rows: ActionRowBuilder<any>[] = [];
-		const options = req.options || [];
+		const options = (req.options || []).slice(0, 25); // Discord select menu allows max 25 options
 		const isMulti = Boolean(req.multiSelect);
 
 		if (options.length > 0) {
 			if (isMulti) {
-				// Multi-select dropdown
+				// Menu déroulant multi-sélection
 				const selectMenu = new StringSelectMenuBuilder()
 					.setCustomId(`select:${questionId}`)
-					.setPlaceholder("Sélectionnez une ou plusieurs options...")
+					.setPlaceholder(truncate("Sélectionnez une ou plusieurs options...", 150))
 					.setMinValues(1)
 					.setMaxValues(options.length)
 					.addOptions(
 						options.map((opt, idx) => ({
-							label: `${idx + 1}. ${opt.label}`.slice(0, 100),
-							value: opt.value || opt.label,
-							description: opt.description ? opt.description.slice(0, 100) : undefined,
+							label: truncate(`${idx + 1}. ${opt.label}`, 100),
+							value: String(idx),
+							description: opt.description ? truncate(opt.description, 100) : undefined,
 						})),
 					);
 
 				rows.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu));
 
-				// Actions row
+				// Actions buttons
 				const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
 					new ButtonBuilder()
 						.setCustomId(`submit_multi:${questionId}`)
@@ -347,74 +370,39 @@ export class DiscordService {
 				);
 				rows.push(actionRow);
 			} else {
-				// Single select
-				if (options.length <= 4) {
-					const buttonRow = new ActionRowBuilder<ButtonBuilder>();
-					options.forEach((opt, idx) => {
-						buttonRow.addComponents(
-							new ButtonBuilder()
-								.setCustomId(`opt:${questionId}:${idx}`)
-								.setLabel(`${idx + 1}. ${opt.label}`.slice(0, 80))
-								.setStyle(ButtonStyle.Primary),
-						);
-					});
-					buttonRow.addComponents(
-						new ButtonBuilder()
-							.setCustomId(`other:${questionId}`)
-							.setLabel("Autre")
-							.setStyle(ButtonStyle.Secondary)
-							.setEmoji("✏️"),
+				// Menu déroulant sélection unique (toujours utilisé quel que soit le nombre d'options)
+				const selectMenu = new StringSelectMenuBuilder()
+					.setCustomId(`select_single:${questionId}`)
+					.setPlaceholder(truncate("Choisissez une option...", 150))
+					.setMinValues(1)
+					.setMaxValues(1)
+					.addOptions(
+						options.map((opt, idx) => ({
+							label: truncate(`${idx + 1}. ${opt.label}`, 100),
+							value: String(idx),
+							description: opt.description ? truncate(opt.description, 100) : undefined,
+						})),
 					);
-					rows.push(buttonRow);
+				rows.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu));
 
-					const controlRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-						new ButtonBuilder()
-							.setCustomId(`retry:${questionId}`)
-							.setLabel("Réessayer / Fork")
-							.setStyle(ButtonStyle.Primary)
-							.setEmoji("🔄"),
-						new ButtonBuilder()
-							.setCustomId(`cancel:${questionId}`)
-							.setLabel("Annuler")
-							.setStyle(ButtonStyle.Danger)
-							.setEmoji("❌"),
-					);
-					rows.push(controlRow);
-				} else {
-					// > 4 options: use select menu
-					const selectMenu = new StringSelectMenuBuilder()
-						.setCustomId(`select_single:${questionId}`)
-						.setPlaceholder("Choisissez une option...")
-						.setMinValues(1)
-						.setMaxValues(1)
-						.addOptions(
-							options.map((opt, idx) => ({
-								label: `${idx + 1}. ${opt.label}`.slice(0, 100),
-								value: `${idx}`,
-								description: opt.description ? opt.description.slice(0, 100) : undefined,
-							})),
-						);
-					rows.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu));
-
-					const controlRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-						new ButtonBuilder()
-							.setCustomId(`other:${questionId}`)
-							.setLabel("Autre")
-							.setStyle(ButtonStyle.Secondary)
-							.setEmoji("✏️"),
-						new ButtonBuilder()
-							.setCustomId(`retry:${questionId}`)
-							.setLabel("Réessayer / Fork")
-							.setStyle(ButtonStyle.Primary)
-							.setEmoji("🔄"),
-						new ButtonBuilder()
-							.setCustomId(`cancel:${questionId}`)
-							.setLabel("Annuler")
-							.setStyle(ButtonStyle.Danger)
-							.setEmoji("❌"),
-					);
-					rows.push(controlRow);
-				}
+				const controlRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+					new ButtonBuilder()
+						.setCustomId(`other:${questionId}`)
+						.setLabel("Autre (texte)")
+						.setStyle(ButtonStyle.Secondary)
+						.setEmoji("✏️"),
+					new ButtonBuilder()
+						.setCustomId(`retry:${questionId}`)
+						.setLabel("Réessayer / Fork")
+						.setStyle(ButtonStyle.Primary)
+						.setEmoji("🔄"),
+					new ButtonBuilder()
+						.setCustomId(`cancel:${questionId}`)
+						.setLabel("Annuler")
+						.setStyle(ButtonStyle.Danger)
+						.setEmoji("❌"),
+				);
+				rows.push(controlRow);
 			}
 		} else {
 			// Free text only
@@ -452,11 +440,11 @@ export class DiscordService {
 			const embed = new EmbedBuilder()
 				.setColor(color)
 				.setTitle("❓ Question de Pi Agent")
-				.setDescription(`### ${req.question}\n\n${statusText}`)
+				.setDescription(`### ${truncate(req.question, 1000)}\n\n${truncate(statusText, 3000)}`)
 				.setTimestamp();
 
 			if (req.details) {
-				embed.addFields({ name: "ℹ️ Détails", value: req.details });
+				embed.addFields({ name: "ℹ️ Détails", value: truncate(req.details, 1024) });
 			}
 
 			await message.edit({
@@ -470,7 +458,7 @@ export class DiscordService {
 						new EmbedBuilder()
 							.setColor(color)
 							.setTitle("Statut de la question")
-							.setDescription(statusText)
+							.setDescription(truncate(statusText, 4000))
 							.setTimestamp(),
 					],
 				}).catch(() => {});
@@ -503,7 +491,7 @@ export class DiscordService {
 	}
 
 	private async handleButtonInteraction(interaction: ButtonInteraction): Promise<void> {
-		const [action, questionId, param] = interaction.customId.split(":");
+		const [action, questionId] = interaction.customId.split(":");
 		const pending = this.pendingQuestions.get(questionId);
 		if (!pending) {
 			await interaction.reply({
@@ -523,7 +511,7 @@ export class DiscordService {
 					new EmbedBuilder()
 						.setColor(0xed4245)
 						.setTitle("❌ Question annulée")
-						.setDescription(`### ${pending.req.question}\n\n${statusText}`)
+						.setDescription(`### ${truncate(pending.req.question, 1000)}\n\n${statusText}`)
 						.setTimestamp(),
 				],
 				components: [],
@@ -554,7 +542,7 @@ export class DiscordService {
 					new EmbedBuilder()
 						.setColor(0xfee75c)
 						.setTitle("🔄 Réessayer / Fork demandé")
-						.setDescription(`### ${pending.req.question}\n\n${statusText}`)
+						.setDescription(`### ${truncate(pending.req.question, 1000)}\n\n${statusText}`)
 						.setTimestamp(),
 				],
 				components: [],
@@ -578,66 +566,25 @@ export class DiscordService {
 		if (action === "text_btn" || action === "other") {
 			const modal = new ModalBuilder()
 				.setCustomId(`modal_other:${questionId}`)
-				.setTitle("Saisie de réponse");
+				.setTitle(truncate("Saisie de réponse", 45));
 
 			const textInput = new TextInputBuilder()
 				.setCustomId("custom_text")
 				.setLabel("Votre réponse ou précision :")
 				.setStyle(TextInputStyle.Paragraph)
 				.setRequired(true)
-				.setPlaceholder("Tapez votre texte ici...");
+				.setPlaceholder(truncate("Tapez votre texte ici...", 100));
 
 			modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(textInput));
 			await interaction.showModal(modal);
 			return;
 		}
 
-		if (action === "opt") {
-			const index = Number.parseInt(param, 10);
-			const opt = pending.req.options?.[index];
-			if (!opt) return;
-
-			if (pending.timer) clearTimeout(pending.timer);
-			this.pendingQuestions.delete(questionId);
-
-			const statusText = `**Option choisie :**\n✓ \`${index + 1}. ${opt.label}\`\n\n*Validé par <@${interaction.user.id}>*`;
-			await interaction.update({
-				embeds: [
-					new EmbedBuilder()
-						.setColor(0x57f287)
-						.setTitle("✅ Choix validé")
-						.setDescription(`### ${pending.req.question}\n\n${statusText}`)
-						.setTimestamp(),
-				],
-				components: [],
-			});
-
-			if (pending.thread) {
-				await pending.thread.send({
-					content: `✅ **Choix validé** par <@${interaction.user.id}> : \`${index + 1}. ${opt.label}\``,
-				}).catch(() => {});
-			}
-
-			pending.resolve({
-				status: "answered",
-				answers: [
-					{
-						type: "option",
-						label: opt.label,
-						value: opt.value || opt.label,
-						index: index + 1,
-					},
-				],
-				user: { id: interaction.user.id, username: interaction.user.username },
-			});
-			return;
-		}
-
 		if (action === "submit_multi") {
 			const options = pending.req.options || [];
-			const selectedValues = Array.from(pending.selectedOptionValues);
+			const selectedIndices = Array.from(pending.selectedOptionIndices);
 
-			if (selectedValues.length === 0 && !pending.customText) {
+			if (selectedIndices.length === 0 && !pending.customText) {
 				await interaction.reply({
 					content: "⚠️ Veuillez sélectionner au moins une option avant de valider.",
 					ephemeral: true,
@@ -649,13 +596,13 @@ export class DiscordService {
 			this.pendingQuestions.delete(questionId);
 
 			const answers: AnswerItem[] = [];
-			selectedValues.forEach((val) => {
-				const idx = options.findIndex((o) => (o.value || o.label) === val);
-				if (idx !== -1) {
+			selectedIndices.forEach((idx) => {
+				const opt = options[idx];
+				if (opt) {
 					answers.push({
 						type: "option",
-						label: options[idx].label,
-						value: val,
+						label: opt.label,
+						value: opt.value || opt.label,
 						index: idx + 1,
 					});
 				}
@@ -679,7 +626,7 @@ export class DiscordService {
 					new EmbedBuilder()
 						.setColor(0x57f287)
 						.setTitle("✅ Sélection validée")
-						.setDescription(`### ${pending.req.question}\n\n${statusText}`)
+						.setDescription(`### ${truncate(pending.req.question, 1000)}\n\n${truncate(statusText, 3000)}`)
 						.setTimestamp(),
 				],
 				components: [],
@@ -711,8 +658,8 @@ export class DiscordService {
 		}
 
 		if (action === "select") {
-			// Multi-select values updated
-			pending.selectedOptionValues = new Set(interaction.values);
+			// Multi-select values updated (values are string indices)
+			pending.selectedOptionIndices = new Set(interaction.values.map((v) => Number.parseInt(v, 10)));
 			await interaction.reply({
 				content: `Sélection enregistrée (${interaction.values.length} option(s)). Cliquez sur **Valider la sélection** pour confirmer.`,
 				ephemeral: true,
@@ -734,7 +681,7 @@ export class DiscordService {
 					new EmbedBuilder()
 						.setColor(0x57f287)
 						.setTitle("✅ Choix validé")
-						.setDescription(`### ${pending.req.question}\n\n${statusText}`)
+						.setDescription(`### ${truncate(pending.req.question, 1000)}\n\n${truncate(statusText, 3000)}`)
 						.setTimestamp(),
 				],
 				components: [],
