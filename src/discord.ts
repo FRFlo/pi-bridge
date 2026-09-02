@@ -75,6 +75,66 @@ function truncate(str: string | undefined, maxLen: number): string {
 	return `${trimmed.slice(0, Math.max(0, maxLen - 3))}...`;
 }
 
+async function sendChunkedThreadMessage(thread: ThreadChannel, header: string, fullText: string): Promise<void> {
+	const maxChunk = 1900;
+	if (fullText.length <= maxChunk) {
+		await thread.send({
+			content: `${header}\n${fullText}`,
+			allowedMentions: { parse: [] },
+		}).catch(() => {});
+		return;
+	}
+
+	const lines = fullText.split("\n");
+	let currentChunk = "";
+	let isFirst = true;
+
+	for (const line of lines) {
+		// Handle edge case where a single line is longer than maxChunk
+		if (line.length > maxChunk) {
+			if (currentChunk.trim().length > 0) {
+				const prefix = isFirst ? `${header}\n` : "*(suite)*\n";
+				await thread.send({
+					content: `${prefix}${currentChunk}`,
+					allowedMentions: { parse: [] },
+				}).catch(() => {});
+				currentChunk = "";
+				isFirst = false;
+			}
+			for (let i = 0; i < line.length; i += maxChunk) {
+				const chunkSlice = line.slice(i, i + maxChunk);
+				const prefix = isFirst ? `${header}\n` : "*(suite)*\n";
+				await thread.send({
+					content: `${prefix}${chunkSlice}`,
+					allowedMentions: { parse: [] },
+				}).catch(() => {});
+				isFirst = false;
+			}
+			continue;
+		}
+
+		if ((currentChunk + "\n" + line).length > maxChunk) {
+			const prefix = isFirst ? `${header}\n` : "*(suite)*\n";
+			await thread.send({
+				content: `${prefix}${currentChunk}`,
+				allowedMentions: { parse: [] },
+			}).catch(() => {});
+			currentChunk = line;
+			isFirst = false;
+		} else {
+			currentChunk = currentChunk ? `${currentChunk}\n${line}` : line;
+		}
+	}
+
+	if (currentChunk.trim().length > 0) {
+		const prefix = isFirst ? `${header}\n` : "*(suite)*\n";
+		await thread.send({
+			content: `${prefix}${currentChunk}`,
+			allowedMentions: { parse: [] },
+		}).catch(() => {});
+	}
+}
+
 export class DiscordService {
 	private client: Client;
 	private config: Config;
@@ -198,13 +258,26 @@ export class DiscordService {
 				autoArchiveDuration: ThreadAutoArchiveDuration.OneHour,
 			});
 
-			const contextEmbeds = this.buildContextEmbeds(req);
-			if (contextEmbeds.length > 0) {
-				await thread.send({ embeds: contextEmbeds });
-			} else {
+			let hasSentAnyContext = false;
+
+			if (req.context) {
+				await sendChunkedThreadMessage(thread, "📋 **Contexte de la tâche :**", req.context);
+				hasSentAnyContext = true;
+			}
+
+			if (req.recentMessages && req.recentMessages.length > 0) {
+				for (const msg of req.recentMessages) {
+					const header = msg.role === "user" ? "👤 **Utilisateur :**" : "🤖 **Assistant (Pi) :**";
+					await sendChunkedThreadMessage(thread, header, msg.content);
+					hasSentAnyContext = true;
+				}
+			}
+
+			if (!hasSentAnyContext) {
 				await thread.send({
-					content: "ℹ️ *Aucun contexte supplémentaire fourni pour cette question.*",
-				});
+					content: "ℹ️ *Aucun historique ou contexte supplémentaire fourni pour cette question.*",
+					allowedMentions: { parse: [] },
+				}).catch(() => {});
 			}
 		} catch (err) {
 			console.warn("[Discord] Impossible de créer le fil de contexte attaché:", err);
@@ -331,35 +404,6 @@ export class DiscordService {
 		}
 
 		return embed;
-	}
-
-	private buildContextEmbeds(req: QuestionRequest): EmbedBuilder[] {
-		const embeds: EmbedBuilder[] = [];
-
-		if (req.context) {
-			const contextEmbed = new EmbedBuilder()
-				.setColor(0x5865f2)
-				.setTitle("📋 Contexte de la tâche")
-				.setDescription(truncate(req.context, 4000));
-			embeds.push(contextEmbed);
-		}
-
-		if (req.recentMessages && req.recentMessages.length > 0) {
-			const formattedRecent = req.recentMessages
-				.slice(-4)
-				.map((m) => `**${m.role === "user" ? "👤 Flo" : "🤖 Pi"}**:\n${truncate(m.content, 800)}`)
-				.join("\n\n---\n\n");
-
-			if (formattedRecent.trim()) {
-				const historyEmbed = new EmbedBuilder()
-					.setColor(0x4f545c)
-					.setTitle("💬 Historique récent des échanges")
-					.setDescription(truncate(formattedRecent, 4000));
-				embeds.push(historyEmbed);
-			}
-		}
-
-		return embeds;
 	}
 
 	private buildQuestionComponents(
