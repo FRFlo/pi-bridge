@@ -1,0 +1,23 @@
+{
+  "name": "pi-bridge",
+  "version": "1.0.0",
+  "description": "Direct bidirectional Discord relay for Pi Coding Agent",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "build": "bun build --target=bun --outdir=dist src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "discord.js": "^14.18.0",
+    "hono": "^4.7.4",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "@types/node": "^22.13.10",
+    "typescript": "^5.8.2"
+  }
+}
