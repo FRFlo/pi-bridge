@@ -179,9 +179,12 @@ export class DiscordService {
 
 		const questionId = randomUUID().slice(0, 8);
 		const timeoutSec = req.timeoutSeconds || 300;
-		const expireTimestamp = Math.floor(Date.now() / 1000) + timeoutSec;
+		const reminderSec = this.config.reminderDelaySeconds || 60;
+		const nowSec = Math.floor(Date.now() / 1000);
+		const expireTimestamp = nowSec + timeoutSec;
+		const reminderTimestamp = reminderSec > 0 && reminderSec < timeoutSec ? nowSec + reminderSec : undefined;
 
-		const mainEmbed = this.buildMainQuestionEmbed(req, expireTimestamp);
+		const mainEmbed = this.buildMainQuestionEmbed(req, expireTimestamp, reminderTimestamp);
 		const components = this.buildQuestionComponents(questionId, req);
 
 		// 1. Envoyer le message principal dans le channel
@@ -295,11 +298,17 @@ export class DiscordService {
 		return true;
 	}
 
-	private buildMainQuestionEmbed(req: QuestionRequest, expireTimestamp: number): EmbedBuilder {
+	private buildMainQuestionEmbed(req: QuestionRequest, expireTimestamp: number, reminderTimestamp?: number): EmbedBuilder {
+		let timingInfo = `⏳ *Expire <t:${expireTimestamp}:R>*`;
+		if (reminderTimestamp) {
+			timingInfo += `\n⏰ *Rappel avec notification <t:${reminderTimestamp}:R>*`;
+		}
+		timingInfo += "\n🧵 *Consultez le fil attaché pour le contexte détaillé.*";
+
 		const embed = new EmbedBuilder()
 			.setColor(0x5865f2)
 			.setTitle("❓ Question de Pi Agent")
-			.setDescription(`### ${truncate(req.question, 1000)}\n\n⏳ *Expire <t:${expireTimestamp}:R>*\n🧵 *Consultez le fil attaché pour le contexte détaillé.*`)
+			.setDescription(`### ${truncate(req.question, 1000)}\n\n${timingInfo}`)
 			.setTimestamp();
 
 		// Afficher la liste complète des options avec leurs descriptions complètes
