@@ -347,11 +347,21 @@ export class DiscordService {
 
 			if (abortSignal) {
 				if (abortSignal.aborted) {
-					this.resolveQuestionExternally(questionId, "❌ Question annulée depuis le terminal", true);
+					setTimeout(() => {
+						const pending = this.pendingQuestions.get(questionId);
+						if (pending) {
+							this.resolveQuestionExternally(questionId, "❌ Question annulée (connexion perdue)", true);
+						}
+					}, 2500);
 					return;
 				}
 				abortSignal.addEventListener("abort", () => {
-					this.resolveQuestionExternally(questionId, "❌ Question annulée depuis le terminal", true);
+					setTimeout(() => {
+						const pending = this.pendingQuestions.get(questionId);
+						if (pending) {
+							this.resolveQuestionExternally(questionId, "❌ Question annulée (connexion perdue)", true);
+						}
+					}, 2500);
 				});
 			}
 		});
