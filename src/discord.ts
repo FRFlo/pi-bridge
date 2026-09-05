@@ -235,11 +235,11 @@ export class DiscordService {
 		}
 
 		const questionId = req.id || randomUUID().slice(0, 8);
-		const timeoutSec = req.timeoutSeconds || 300;
+		const timeoutSec = typeof req.timeoutSeconds === "number" ? req.timeoutSeconds : 0;
 		const reminderSec = this.config.reminderDelaySeconds || 60;
 		const nowSec = Math.floor(Date.now() / 1000);
-		const expireTimestamp = nowSec + timeoutSec;
-		const reminderTimestamp = reminderSec > 0 && reminderSec < timeoutSec ? nowSec + reminderSec : undefined;
+		const expireTimestamp = timeoutSec > 0 ? nowSec + timeoutSec : undefined;
+		const reminderTimestamp = reminderSec > 0 && (timeoutSec <= 0 || reminderSec < timeoutSec) ? nowSec + reminderSec : undefined;
 
 		const mainEmbed = this.buildMainQuestionEmbed(req, expireTimestamp, reminderTimestamp);
 		const components = this.buildQuestionComponents(questionId, req);
@@ -313,26 +313,29 @@ export class DiscordService {
 				}, reminderSec * 1000);
 			}
 
-			const timer = setTimeout(async () => {
-				const pending = this.pendingQuestions.get(questionId);
-				if (!pending) return;
-				if (pending.reminderTimer) clearTimeout(pending.reminderTimer);
-				this.pendingQuestions.delete(questionId);
+			let timer: Timer | null = null;
+			if (timeoutSec > 0) {
+				timer = setTimeout(async () => {
+					const pending = this.pendingQuestions.get(questionId);
+					if (!pending) return;
+					if (pending.reminderTimer) clearTimeout(pending.reminderTimer);
+					this.pendingQuestions.delete(questionId);
 
-				await this.updateMessageStatus(
-					sentMessage,
-					req,
-					"⌛ **Question expirée (délai dépassé)**",
-					0xed4245,
-					thread,
-				);
+					await this.updateMessageStatus(
+						sentMessage,
+						req,
+						"⌛ **Question expirée (délai dépassé)**",
+						0xed4245,
+						thread,
+					);
 
-				resolve({
-					status: "timeout",
-					answers: [],
-					message: "Délai d'attente Discord dépassé",
-				});
-			}, timeoutSec * 1000);
+					resolve({
+						status: "timeout",
+						answers: [],
+						message: "Délai d'attente Discord dépassé",
+					});
+				}, timeoutSec * 1000);
+			}
 
 			this.pendingQuestions.set(questionId, {
 				id: questionId,
@@ -390,8 +393,8 @@ export class DiscordService {
 		return true;
 	}
 
-	private buildMainQuestionEmbed(req: QuestionRequest, expireTimestamp: number, reminderTimestamp?: number): EmbedBuilder {
-		let timingInfo = `⏳ *Expire <t:${expireTimestamp}:R>*`;
+	private buildMainQuestionEmbed(req: QuestionRequest, expireTimestamp?: number, reminderTimestamp?: number): EmbedBuilder {
+		let timingInfo = expireTimestamp ? `⏳ *Expire <t:${expireTimestamp}:R>*` : "♾️ *Sans limite de temps*";
 		if (reminderTimestamp) {
 			timingInfo += `\n⏰ *Rappel avec notification <t:${reminderTimestamp}:R>*`;
 		}

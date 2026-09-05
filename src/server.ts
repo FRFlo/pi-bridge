@@ -30,7 +30,7 @@ const AskSchema = z.object({
 	recentMessages: z.array(RecentMessageSchema).optional(),
 	options: z.array(OptionSchema).optional(),
 	multiSelect: z.boolean().optional(),
-	timeoutSeconds: z.number().int().positive().optional(),
+	timeoutSeconds: z.number().int().min(0).optional(),
 	channelId: z.string().optional(),
 	threadId: z.string().optional(),
 });
