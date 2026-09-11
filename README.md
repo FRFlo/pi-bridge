@@ -16,10 +16,11 @@ Direct bidirectional Discord relay & interactive decision bridge for the **Pi Co
 | Variable | Description | Default |
 | --- | --- | --- |
 | `PORT` | HTTP server port | `8017` |
-| `PI_BRIDGE_API_KEY` | Bearer token for authenticating Pi requests | `""` |
-| `PI_BRIDGE_DISCORD_TOKEN` | Discord Bot Token | `""` |
-| `DISCORD_HOME_CHANNEL` | Default Discord Channel ID | `1544810657549910117` |
-| `DISCORD_ALLOWED_USERS` | Comma-separated allowed Discord User IDs | `544862774002581504` |
+| `PI_BRIDGE_API_KEY` | Bearer token for authenticating Pi requests (optional) | `""` |
+| `PI_BRIDGE_DISCORD_TOKEN` | Discord Bot Token (or `DISCORD_BOT_TOKEN`) | `""` |
+| `DISCORD_HOME_CHANNEL` | Default Discord Channel ID | `""` |
+| `DISCORD_ALLOWED_USERS` | Comma-separated allowed Discord User IDs (empty = any user) | `""` |
+| `DISCORD_REMINDER_DELAY_SECONDS` | Delay in seconds before pinging reminder (0 = disabled) | `60` |
 
 ## API Endpoints
 

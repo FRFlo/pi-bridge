@@ -37,6 +37,7 @@ export interface QuestionRequest {
 	multiSelect?: boolean;
 	timeoutSeconds?: number;
 	channelId?: string;
+	threadId?: string;
 }
 
 export interface AnswerItem {
@@ -199,8 +200,9 @@ export class DiscordService {
 		message: string;
 		title?: string;
 		channelId?: string;
+		threadId?: string;
 	}): Promise<{ success: boolean; messageId?: string; error?: string }> {
-		const channel = await this.resolveTargetChannel(params.channelId);
+		const channel = await this.resolveTargetChannel(params.threadId || params.channelId);
 		if (!channel) {
 			return { success: false, error: "Salon Discord introuvable" };
 		}
@@ -225,7 +227,7 @@ export class DiscordService {
 	}
 
 	public async askQuestion(req: QuestionRequest, abortSignal?: AbortSignal): Promise<QuestionResult> {
-		const channel = await this.resolveTargetChannel(req.channelId);
+		const channel = await this.resolveTargetChannel(req.threadId || req.channelId);
 		if (!channel) {
 			return {
 				status: "cancelled",

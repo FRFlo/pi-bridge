@@ -11,8 +11,8 @@ export function loadConfig(): Config {
 	const port = Number.parseInt(process.env.PORT || "8017", 10);
 	const apiKey = process.env.PI_BRIDGE_API_KEY || "";
 	const discordToken = process.env.PI_BRIDGE_DISCORD_TOKEN || process.env.DISCORD_BOT_TOKEN || "";
-	const defaultChannelId = process.env.DISCORD_HOME_CHANNEL || "1544810657549910117";
-	const rawAllowed = process.env.DISCORD_ALLOWED_USERS || "544862774002581504";
+	const defaultChannelId = process.env.DISCORD_HOME_CHANNEL || "";
+	const rawAllowed = process.env.DISCORD_ALLOWED_USERS || "";
 	const allowedUsers = rawAllowed
 		.split(",")
 		.map((u) => u.trim())
